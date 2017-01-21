@@ -7,13 +7,13 @@ More information: [https://www.cyberws.com/bash/connect2ssh/](https://www.cyberw
 Need help using Connect2SSH? [Youtube Instruction Videos](https://www.youtube.com/channel/UCeQtI9fcAapQkiHph42NjWA)
 
 ----
-** Updates **
+**Updates**
 
 * Follow this page
 * [Follow on Youtube](https://www.youtube.com/channel/UCeQtI9fcAapQkiHph42NjWA)
 * [Follow on Facebook](https://www.facebook.com/cyberwscom/)
 
-** Contribute/Contact **
+**Contribute/Contact**
 
 If contacting for technical support please see video manuals first.  I'll do my best to help troubleshoot but can't make any promises due to limited time.
 
