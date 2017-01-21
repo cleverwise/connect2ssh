@@ -1,0 +1,1417 @@
+#!/bin/bash
+
+: <<HEADER
+SSH-FS BASH CONNECTOR v1.2 on 10 January 2017
+Copyright (c) 2017 by Jeremy O'Connell - Cyberweb Solutions, LLC @ www.cyberws.com
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+HEADER
+
+######################################################################
+# Variables
+######################################################################
+
+# Version number
+VERSION="1.2"
+
+# Title variabe
+TITLE="SSH-FS BASH CONNECTOR"
+
+# sqlite3 command
+SQLITE_CMD="sqlite3"
+
+# Set ACTION_BANNER to off
+ACTION_BANNER="off"
+
+# Load action from commandline
+action=$1
+
+# Convert shortcut commands - MUST AFTER action=$1
+declare -A ACTION_SHORTCUTS
+ACTION_SHORTCUTS[as]="add-server"
+ACTION_SHORTCUTS[us]="update-server"
+ACTION_SHORTCUTS[ds]="delete-server"
+ACTION_SHORTCUTS[ls]="list-servers"
+ACTION_SHORTCUTS[aa]="add-account"
+ACTION_SHORTCUTS[ua]="update-account"
+ACTION_SHORTCUTS[da]="delete-account"
+ACTION_SHORTCUTS[la]="list-accounts"
+ACTION_SHORTCUTS[co]="connect"
+ACTION_SHORTCUTS[dc]="disconnect"
+ACTION_SHORTCUTS[cs]="credits"
+
+for ACTION_SHORTCUT in "${!ACTION_SHORTCUTS[@]}"
+do
+	if test "$action" == "$ACTION_SHORTCUT"
+	then
+		action=${ACTION_SHORTCUTS[$ACTION_SHORTCUT]}
+		echo "$action"
+	fi
+done
+
+####################################################################
+# Load configuration file and set database
+####################################################################
+# Get home directory
+HOME_DIR=`echo $HOME`
+
+# Set SQLITE 
+
+# Load configuration file
+CONFIG_FILE_PATH="$HOME_DIR/.config/connect2ssh/config"
+
+# Declare CONFIG_ARRAY
+declare -A CONFIG_ARRAY
+
+# Load configuration variables
+if [ -f "$CONFIG_FILE_PATH" ]
+then
+	mapfile -t CONFIG_VARS < <(cat $CONFIG_FILE_PATH)
+	for CONFIG_VARS_DATA in "${CONFIG_VARS[@]}"
+	do
+		# Split data
+		IFS='=' read -a CONFIG_DATA <<< "${CONFIG_VARS_DATA}"
+		# Remove first and last quotes
+		CONFIG_DATA_VALUE="${CONFIG_DATA[1]}"
+		CONFIG_DATA_VALUE="${CONFIG_DATA_VALUE%\"}"
+		CONFIG_DATA_VALUE="${CONFIG_DATA_VALUE#\"}"
+		CONFIG_ARRAY[${CONFIG_DATA[0]}]="$CONFIG_DATA_VALUE"
+	done
+fi
+
+# Set database location
+SQLITE_DB=${CONFIG_ARRAY[DB_FILE_PATH]}
+if [ -z "$SQLITE_DB" ]
+then
+	SQLITE_DB="$HOME_DIR/connect2ssh.db"
+fi
+
+######################################################################
+# Header
+######################################################################
+
+echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+echo "$TITLE v$VERSION"
+echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"$'\n'
+
+######################################################################
+# Functions
+######################################################################
+
+# Footer
+######################################################################
+DISPLAY_FOOTER() {
+	echo $'\n'$"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+}
+
+# Display install package notices
+######################################################################
+DISPLAY_PACKAGE_INSTALL() {
+	echo "$1 is not on this system please install!"$'\n'
+	echo "* Debian/Ubuntu based: sudo apt-get install $2"
+	echo "* Redhat based: sudo yum install $3 OR sudo dnf install $3"
+	echo "* Other OSes seek instructions for installing $2"$'\n'
+	command_list_status="fail"
+}
+
+# Command check - MUST BE BELOW DISPLAY_PACKAGE_INSTALL
+######################################################################
+COMMAND_CHECK() {
+	command_list_status="pass"
+	# Check for sqlite3
+	command -v $SQLITE_CMD >/dev/null 2>&1 || {
+		DISPLAY_PACKAGE_INSTALL "$SQLITE_CMD" "sqlite3" "sqlite"
+	}
+	# Check for w3m
+	command -v w3m >/dev/null 2>&1 || {
+		DISPLAY_PACKAGE_INSTALL "w3m" "w3m" "w3m"
+	}
+	# Check for sshfs
+	command -v sshfs >/dev/null 2>&1 || {
+		DISPLAY_PACKAGE_INSTALL "sshfs" "sshfs" "sshfs"
+	}
+
+	# If command_list_status is fail then exit
+	if test "$command_list_status" == "fail"
+	then
+		echo "PLEASE CORRECT MISSING PACKAGE(S) THEN TRY AGAIN!"$'\n'
+		exit
+	fi
+}
+
+# Version check
+######################################################################
+VERSION_CHECK() {
+	# Get database version
+	DB_VERSION=`$SQLITE_CMD $SQLITE_DB "select config_value from config where config_name='version'"`
+
+	# Update if necessary
+	if (( $(echo "$VERSION > $DB_VERSION" | bc -l) ))
+	then
+		sqlite3 $SQLITE_DB "update config set config_value="$VERSION" where config_name='version'"
+		# v1.0
+		if (( $(echo "1.1 > $DB_VERSION" | bc -l) ))
+		then
+			$SQLITE_CMD $SQLITE_DB "insert into config (config_name,config_value) values ('key_path','~/.ssh');"
+		fi
+	fi
+}
+
+# Display action banner - MUST BE ABOVE INITIALIZE_DB & AFTER COMMAND_CHECK, VERSION_CHECK
+######################################################################
+ACTION_BANNER() {
+	COMMAND_CHECK
+
+	# Check for database before action banner and if missing install
+	if [ -f "$SQLITE_DB" ]
+	then
+		# Check script version against database version
+		VERSION_CHECK
+
+		ACTION_BANNER="on"
+		echo "[ACTION] $1"$'\n'
+	else
+		INITIALIZE_DB "$1"
+	fi
+}
+
+# Display error banner
+######################################################################
+ERROR_BANNER() {
+	echo "{ERROR} $1"
+}
+
+# Display success banner
+######################################################################
+SUCCESS_BANNER() {
+	echo $'\n'"[~SUCCESS] $1"
+}
+
+# Display failed banner
+######################################################################
+FAILED_BANNER() {
+	echo $'\n'"[~FAILED] $1"
+}
+
+# Menu Header display
+######################################################################
+MENU_HEADER() {
+	echo $'\n'$"$1:"$'\n'$"------------------------------------------------------------"
+}
+
+# Menu Item display
+######################################################################
+MENU_ITEM() {
+	printf "%-18s %-2s %-2s %-2s %s\n" $1 "" "$2" "" "$3";
+}
+
+# Remove ', " and trim
+######################################################################
+SANATIZE_VAR() {
+	clean_var=$1
+
+	clean_var=${clean_var//\'/}
+	clean_var=${clean_var//\"/}
+	clean_var=`echo $clean_var | xargs`
+}
+
+# HTML Writer
+######################################################################
+HTML_WRITEOUT() {
+	# Key variables
+	TITLE_BUILD="$TITLE v$VERSION - HTML Output"
+	W3M_USAGE="<p><b><u>[USAGE] To exit hit q then y</u></b></p>"
+	HTML_PAGENAME="$HOME_DIR/.config/connect2ssh/connect2ssh.html"
+
+	# Build HTML page and save
+	html_page="<html><head><title>$TITLE_BUILD</title></head><body>"
+	html_page="$html_page<p>$TITLE_BUILD</p>$W3M_USAGE$1$2"
+	html_page="$html_page</body></html>"
+	echo "$html_page" > $HTML_PAGENAME
+
+	# Now display using w3m
+	w3m $HTML_PAGENAME
+
+	# Remove file
+	if [ -f "$HTML_PAGENAME" ]
+	then
+		rm $HTML_PAGENAME
+	fi
+
+	# Display message
+	echo $'\n'$"[NOTICE] HTML page was displayed and is now removed"
+}
+
+# Load server records - MUST BE AFTER SANATIZE_VAR()
+#####################################################################
+LOAD_SERVER_RECORDS() {
+	read -e -p "How to load server record? Type either id or name: " -i "id" server_record_type
+	if test "$server_record_type" == "id"
+	then
+		read -e -p "Enter server ID: " -i "" server_id
+		SANATIZE_VAR "$server_id"
+		server_id=$clean_var
+	else
+		read -e -p "Enter server name: " -i "" server_ename
+		SANATIZE_VAR "$server_ename"
+		server_ename=$clean_var
+
+		server_id=`$SQLITE_CMD $SQLITE_DB "select server_id from servers where server_name='$server_ename'"`
+	fi
+
+	server_details=`$SQLITE_CMD $SQLITE_DB "select server_name,server_address,server_port,server_notes from servers where server_id='$server_id'"`
+	if [ -n "$server_details" ]
+	then
+		# Load data from SQL
+		IFS='|' read -a SERVER_DETAILS <<< "${server_details}"
+		# Set variables by reading array
+		server_name=${SERVER_DETAILS[0]}
+		server_address=${SERVER_DETAILS[1]}
+		server_port=${SERVER_DETAILS[2]}
+		server_notes=${SERVER_DETAILS[3]}
+		server_details="pass"
+	else
+		server_details="fail"
+		FAILED_BANNER "Server record does NOT exist!"
+	fi
+}
+
+# Load account records - MUST BE AFTER SANATIZE_VAR() and LOAD_SERVER_RECORDS()
+#####################################################################
+LOAD_ACCOUNT_RECORDS() {
+	echo "First pick the server account is located on. Press any key to continue..."
+	read continue_key
+
+	# Get server records
+	LOAD_SERVER_RECORDS
+
+	if test "$server_details" == "pass"
+	then
+		read -e -p "Now enter username: " -i "" username
+		SANATIZE_VAR "$username"
+		username=$clean_var
+
+		account_details=`$SQLITE_CMD $SQLITE_DB "select account_id,login_type,key_file,remote_directory,mount_point,account_notes from accounts where server_id='$server_id' and username='$username'"`
+		if [ -n "$account_details" ]
+		then
+			# Load data from SQL
+			IFS='|' read -a ACCOUNT_DETAILS <<< "${account_details}"
+			# Set variables by reading array
+			account_id=${ACCOUNT_DETAILS[0]}
+			login_type=${ACCOUNT_DETAILS[1]}
+			key_file=${ACCOUNT_DETAILS[2]}
+			remote_directory=${ACCOUNT_DETAILS[3]}
+			mount_point=${ACCOUNT_DETAILS[4]}
+			account_notes=${ACCOUNT_DETAILS[5]}
+
+			account_details="pass"
+		else
+			account_details="fail"
+			FAILED_BANNER "Account record does NOT exist!"
+		fi
+	fi
+}
+
+# Check permission of file
+######################################################################
+FILE_LOCKED_DOWN() {
+	file_permission_chk="fail"
+
+	# Does file exist or not
+	if [ -f "$1" ]
+	then
+		# Check file permissions are set correctly
+		file_permission=`stat -c "%a" $1`
+		if test "$file_permission" == "600"
+		then
+			file_permission_chk="pass"
+		else
+			ERROR_BANNER "Alter key file $1 permissions to 600"
+		fi
+	else
+		ERROR_BANNER "Key file $1 does NOT exist!"
+	fi
+
+	# Abort due to errors
+	if test "$file_permission_chk" == "fail"
+	then
+		FAILED_BANNER "Aborting due to errors"
+		DISPLAY_FOOTER
+		exit
+	fi  
+}
+
+# Establish connection to server - MUST BE AFTER FILE_LOCKED_DOWN
+######################################################################
+ESTABLISH_CONNECTION() {
+	echo "Now attempting to connect to $username on $server_name..."
+	sleep 2
+
+	# If key file check and add to command
+	if test "$login_type" == "1"
+	then
+		# Get key_path or current_path
+		mapfile -t KEY_PATH < <($SQLITE_CMD $SQLITE_DB "select config_value from config where config_name='key_path'")
+		if [ -n "$KEY_PATH" ]
+		then
+			cpath="$KEY_PATH"
+		else
+			cpath=`pwd`
+		fi
+
+		# Check file permissions
+		FILE_LOCKED_DOWN "$cpath/$key_file"
+	fi
+
+	# Connect SSHFS or all else go to SSH
+	if test "$ssh_type" == "sshfs"
+	then
+		# Build connection options
+		connect_options="-o port=$server_port"
+
+		# If key file then add to command
+		if test "$login_type" == "1"
+		then
+			# Add to connection options
+			connect_options="$connect_options,IdentityFile=$cpath/$key_file"
+		fi
+
+		# Issue SSHFS command with nohup so hangup isn't sent
+		nohup sshfs $connect_options $username@$server_address:$remote_directory $mount_point > $HOME_DIR/.config/connect2ssh/nohup.out 2>&1&
+		sleep 15
+		echo "Connection should be established..."
+	else
+		# Build connection options
+		connect_options="-p $server_port"
+
+		# If key file check and add to command
+		if test "$login_type" == "1"
+		then
+			# Add to connection options
+			connect_options="$connect_options -i $cpath/$key_file"
+		fi
+
+		# Issue SSH command
+		ssh $connect_options $username@$server_address
+	fi
+}
+
+# Disconnect SSHFS - MUST BE AFTER ERROR_BANNER
+######################################################################
+DISCONNECT_SSHFS() {
+	mount_point="$1"
+
+	# If mount point is blank
+	if [ -z "$action" ]
+	then
+		mount_point="/dev/null"
+	fi
+
+	# Verify path exists
+	if [ -d "$mount_point" ]
+	then
+		# Get mount point status
+		mount_point_status=`mountpoint $mount_point`
+		
+		# If path is mounted then unmount or issue error
+		is_mount_point="is a mountpoint"
+		if [ "$mount_point_status" != "${mount_point_status%$is_mount_point*}" ]
+		then
+			# Notice
+			echo "Attempting to unmount $mount_point, stand by..."
+
+			# Issue unmount command
+			fusermount -u $mount_point
+			sleep 5
+		else
+			FAILED_BANNER "$mount_point is NOT mounted!"
+		fi
+	else
+		FAILED_BANNER "$mount_point does NOT exist!"
+	fi
+}
+
+# Initialize database - MUST BE AFTER ERROR_BANNER, FAILED_BANNER, COMMAND_CHECK
+######################################################################
+INITIALIZE_DB() {
+	COMMAND_CHECK
+
+	echo "Install Configuration"
+
+	# If .config directory doesn't exist create it
+	config_path="$HOME_DIR/.config"
+	if [ -d "$config_path" ]
+	then
+		SUCCESS_BANNER "$config_path directory exists!"
+	else
+		mkdir $config_path
+		SUCCESS_BANNER "$config_path directory created"	
+	fi
+
+	# If .connect2ssh directory doesn't exit create it
+	config_path="$config_path/connect2ssh"
+	if [ -d "$config_path" ]
+	then
+		SUCCESS_BANNER "$config_path directory exists!"
+	else
+		mkdir $config_path
+		SUCCESS_BANNER "$config_path directory created"	
+	fi
+
+	# If config file doesn't exist create it
+	config_file="$config_path/config"
+	if [ -f "$config_file" ]
+	then
+		SUCCESS_BANNER "$config_file exists!"
+	else
+		echo "DB_FILE_PATH=\"$config_path/connect2ssh.db\"" > $config_file
+		SUCCESS_BANNER "$config_file created!"
+
+		SQLITE_DB="$config_path/connect2ssh.db"
+	fi
+
+	echo "Initializing Database"
+
+	# Check for existence of database
+	if [ -f "$SQLITE_DB" ]
+	then
+		ERROR_BANNER "Database already exists!"
+		FAILED_BANNER "Skipping database install!"
+	else
+		# Server list table
+		$SQLITE_CMD $SQLITE_DB "create table config (config_id INTEGER PRIMARY KEY, config_name TEXT, config_value TEXT);"
+		$SQLITE_CMD $SQLITE_DB "insert into config (config_name,config_value) values ('version','$VERSION');"
+		$SQLITE_CMD $SQLITE_DB "insert into config (config_name,config_value) values ('key_path','~/.ssh');"
+	
+		# Server list table
+		$SQLITE_CMD $SQLITE_DB "create table servers (server_id INTEGER PRIMARY KEY, server_name TEXT, server_address TEXT, server_port INTEGER, server_notes TEXT);"
+
+		# Account list table
+		$SQLITE_CMD $SQLITE_DB "create table accounts (account_id INTEGER PRIMARY KEY, server_id INTEGER, username TEXT, login_type INTEGER, key_file TEXT, remote_directory TEXT, mount_point TEXT, account_notes TEXT);"
+
+		# Display process is complete
+		SUCCESS_BANNER "Installation completed!"
+	fi
+
+	echo $'\n'$"[Action] $1"$'\n'
+}
+
+######################################################################
+# Actions
+######################################################################
+
+# Update configurations
+######################################################################
+if test "$action" == "config-update"
+then
+	ACTION_BANNER "Update Configuration Setting"
+
+	# Set CONFIG_NAME
+	if [ -n "$2" ]
+	then
+		CONFIG_NAME="$2"
+	else
+		CONFIG_NAME="skip"
+	fi
+	# Clear if version is passed
+	if test "$CONFIG_NAME" == "version"
+	then
+		CONFIG_NAME="skip"
+	fi
+
+	# Check for valid configuration
+	mapfile -t CONFIG_NAME_CHECK < <($SQLITE_CMD $SQLITE_DB "select config_name from config where config_name='$CONFIG_NAME'")
+
+	echo "Looking up $CONFIG_NAME"
+
+	if [ -n "$CONFIG_NAME_CHECK" ]
+	then
+		# Get current CONFIG_VALUE
+		mapfile -t CONFIG_VALUE < <($SQLITE_CMD $SQLITE_DB "select config_value from config where config_name='$CONFIG_NAME'")
+
+		# Get updated CONFIG_VALUE
+		echo ""
+		read -e -p "Update current value: " -i "$CONFIG_VALUE" CONFIG_VALUE
+
+		echo $'\n'$"About to update $CONFIG_NAME to $CONFIG_VALUE"$'\n'
+		read -e -p "Type yes or no to save changes: " -i "no" config_save
+
+		# Save record or display already exists
+		if test "$config_save" == "yes"
+		then
+			$SQLITE_CMD $SQLITE_DB "update config set config_value='$CONFIG_VALUE' where config_name='$CONFIG_NAME'"
+			SUCCESS_BANNER "$CONFIG_NAME updated!"
+		else
+			FAILED_BANNER "$CONFIG_NAME not updated!"
+		fi
+	else
+		FAILED_BANNER "Configuration setting doesn't exist!"
+	fi
+
+fi
+
+# List servers/hosts
+######################################################################
+if test "$action" == "list-servers"
+then
+	ACTION_BANNER "Listing Servers/Hosts Arranged By Name"
+
+	echo "To view server notes rerun command and add space notes"$'\n'
+
+	mapfile -t SERVER_LIST < <($SQLITE_CMD $SQLITE_DB "select server_id,server_name,server_address,server_port,server_notes from servers ORDER BY server_name")
+
+	if [ -z "$SERVER_LIST" ]
+	then
+		echo "** No servers **"
+	else
+		echo "------------------------------------------------------------"
+	fi
+
+	# Loop through each server record
+	for SERVER_DATA in "${SERVER_LIST[@]}"
+	do
+		# Split data
+		IFS='|' read -a SERVER <<< "${SERVER_DATA}"
+
+		# List servers
+		echo "Server ID ${SERVER[0]}: ${SERVER[1]} @ ${SERVER[2]} on ${SERVER[3]}"
+		# Add notes if requested
+		if test "$2" == "notes"
+		then
+			server_notes="${SERVER[4]}"
+			# If server_notes is empty add none
+			if [ -z "$server_notes" ]
+			then
+				server_notes="None"
+			fi
+			echo "Notes: $server_notes"
+		fi
+		echo "------------------------------------------------------------"
+	done
+fi
+
+# Add a server/host
+######################################################################
+if test "$action" == "add-server"
+then
+	ACTION_BANNER "Adding A Server/Host"
+
+	# Get human name for server and trim
+	echo "Type in a human friendly name of server/host then hit enter:"
+	read server_name
+	SANATIZE_VAR "$server_name"
+	server_name=$clean_var
+
+	# Get address for server and trim
+	echo $'\n'$"Type in IP or URL to server/host then hit enter:"
+	read server_address
+	SANATIZE_VAR "$server_address"
+	server_address=$clean_var
+
+	# Get port for server and trim
+	echo ""
+	read -e -p "Server SSH port: " -i "22" server_port
+	SANATIZE_VAR "$server_port"
+	server_port=$clean_var
+
+	# Get notes for server and trim
+	echo $'\n'$"Optional: Type in any notes for server and then hit enter:"
+	read server_notes
+	SANATIZE_VAR "$server_notes"
+	server_notes=$clean_var
+
+	# Ask for confirmation
+	echo $'\n'$"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+	echo "This will add the following server/host:"$'\n'
+	echo "-> Name: $server_name"$'\n'$"-> Address: $server_address"$'\n'$"-> Port: $server_port"$'\n'$"[Notes] $server_notes"$'\n'
+	read -e -p "Type yes to save or no to cancel: " -i "yes" server_confirm
+	
+	# If server_name or server_address is empty set server_confirm to n
+	if [ -z "$server_name" ]
+	then
+		server_confirm="no"
+		ERROR_BANNER "No server name provided!"
+	fi
+	if [ -z "$server_address" ]
+	then
+		server_confirm="no"
+		ERROR_BANNER "No server address provided!"
+	fi
+	# If port is not an integer set to 22
+	re='^[0-9]+$'
+	if ! [[ $server_port =~ $re ]]
+	then
+		server_port="22"
+	fi
+
+	# Save to database or error out
+	if test "$server_confirm" == "yes"
+	then
+		server_save="y"
+
+		# Check to see if server name exists
+		server_name_check=`$SQLITE_CMD $SQLITE_DB "select server_id from servers where server_name='$server_name'"`
+		if [ -n "$server_name_check" ]
+		then
+			server_save="n"
+			ERROR_BANNER "Server name already exists!"
+		fi
+		# Check to see if server address exists
+		server_address_check=`$SQLITE_CMD $SQLITE_DB "select server_id from servers where server_address='$server_address'"`
+		if [ -n "$server_address_check" ]
+		then
+			server_save="n"
+			ERROR_BANNER "Server address already exists!"
+		fi
+
+		# Save record or display already exists
+		if test "$server_save" == "y"
+		then
+			$SQLITE_CMD $SQLITE_DB "insert into servers (server_name,server_address,server_port,server_notes) values ('$server_name','$server_address','$server_port','$server_notes')"
+			SUCCESS_BANNER "$server_name added to database!"
+		else
+			FAILED_BANNER "Server not added to database!"
+		fi
+	else
+		FAILED_BANNER "Server not added to database!"
+	fi
+fi
+
+# Update a server/host
+######################################################################
+if test "$action" == "update-server"
+then
+	ACTION_BANNER "Update A Server/Host"
+
+	# Get server record
+	LOAD_SERVER_RECORDS
+
+	# Load information if pass
+	if test "$server_details" == "pass"
+	then
+		# Update server/host record
+		echo "Editing: $server_name"$'\n'
+
+		# Get human name for server and trim
+		read -e -p "Server name: " -i "$server_name" server_name
+		SANATIZE_VAR "$server_name"
+		server_name=$clean_var
+
+		# Get address for server and trim
+		read -e -p "Server address: " -i "$server_address" server_address
+		SANATIZE_VAR "$server_address"
+		server_address=$clean_var
+
+		# Get port for server and trim
+		read -e -p "Server SSH port: " -i "$server_port" server_port
+		SANATIZE_VAR "$server_address"
+		server_address=$clean_var
+
+		# Get notes for server and trim
+		echo "Server notes:"
+		read -e -i "$server_notes" server_notes
+		SANATIZE_VAR "$server_notes"
+		server_notes=$clean_var
+
+		# Ask for confirmation
+		echo $'\n'$"Confirm updating record to: "$'\n'$'\n'$"$server_name at $server_address on port $server_port"
+		echo "[Notes] $server_notes"$'\n'
+		read -e -p "Type yes to save/update or no to cancel: " -i "no" server_update_confirm
+
+		# If server_name or server_address is empty set server_confirm to n
+		if [ -z "$server_name" ]
+		then
+			server_update_confirm="no"
+			ERROR_BANNER "No server name provided!"
+		fi
+		if [ -z "$server_address" ]
+		then
+			server_update_confirm="no"
+			ERROR_BANNER "No server address provided!"
+		fi
+		# If port is not an integer set to 22
+		re='^[0-9]+$'
+		if ! [[ $server_port =~ $re ]]
+		then
+			server_port="22"
+		fi
+
+		# Update record or not
+		if test "$server_update_confirm" == "yes"
+		then
+			server_save="y"
+
+			# Check to see if server name exists
+			server_name_check=`$SQLITE_CMD $SQLITE_DB "select server_id from servers where server_name='$server_name'"`
+			if [ -n "$server_name_check" ]
+			then
+				if test "$server_name_check" -ne "$server_id"
+				then
+					server_save="n"
+					ERROR_BANNER "Server name already exists!"
+				fi
+			fi
+			# Check to see if server address exists
+			server_address_check=`$SQLITE_CMD $SQLITE_DB "select server_id from servers where server_address='$server_address'"`
+			if [ -n "$server_address_check" ]
+			then
+				if test "$server_address_check" -ne "$server_id"
+				then
+					server_save="n"
+					ERROR_BANNER "Server address already exists!"
+				fi
+			fi
+
+			# Save record or display already exists
+			if test "$server_save" == "y"
+			then
+				$SQLITE_CMD $SQLITE_DB "update servers set server_name='$server_name',server_address='$server_address',server_port='$server_port',server_notes='$server_notes' where server_id='$server_id'"
+				SUCCESS_BANNER "$server_name updated!"
+			else
+				FAILED_BANNER "Server not updated!"
+			fi
+		else
+			FAILED_BANNER "Server not updated!"
+		fi
+	fi
+fi
+
+# Delete a server/host
+######################################################################
+if test "$action" == "delete-server"
+then
+	ACTION_BANNER "Delete A Server/Host"
+
+	# Get server record
+	LOAD_SERVER_RECORDS
+
+	# Load information if pass
+	if test "$server_details" == "pass"
+	then
+		echo $'\n'$"You are about to delete the following server: "$'\n'$'\n'$"$server_name at $server_address"$'\n'
+		read -e -p "Type yes to delete or no to cancel: " -i "no" server_update_confirm
+
+		# Delete record or not
+		if test "$server_update_confirm" == "yes"
+		then
+			server_delete="y"
+
+			# Check to see if server has assigned accounts
+			accounts_check=`$SQLITE_CMD $SQLITE_DB "select count(account_id) from accounts where server_id='$server_id'"`
+			if test "$accounts_check" -ne "0"
+			then
+				server_delete="n"
+				ERROR_BANNER "Server still has assigned accounts!"
+			fi
+
+			# Save record or display already exists
+			if test "$server_delete" == "y"
+			then
+				$SQLITE_CMD $SQLITE_DB "delete from servers where server_id='$server_id'"
+				SUCCESS_BANNER "$server_name deleted!"
+			else
+				FAILED_BANNER "$server_name not deleted!"
+			fi
+		else
+			FAILED_BANNER "$server_name not deleted!"
+		fi
+	fi
+fi
+
+# List accounts
+######################################################################
+if test "$action" == "list-accounts"
+then
+	ACTION_BANNER "List Accounts"
+
+	# Current account number
+	account_count=`$SQLITE_CMD $SQLITE_DB "select count(account_id) from accounts"`
+
+	if test "$account_count" == "0"
+	then
+		echo "** No accounts **"
+	else
+		# HTML or text list
+		read -e -p "What kind of list? Type html or text: " -i "text" list_type
+
+		# If list type isn't html set to text
+		if test "$list_type" != "html"
+		then
+			list_type="text"
+		fi
+
+		# Set notice for view notes
+		if test "$list_type" == "html"
+		then
+			html_view="<br><br>Note: To view account notes rerun command and add space notes"
+		else
+			text_view=$'\n'$'\n'$"Note: To view account notes rerun command and add space notes"
+		fi
+		echo 
+
+		# Get server list
+		mapfile -t SERVER_LIST < <($SQLITE_CMD $SQLITE_DB "select server_id,server_name from servers order by server_name")
+
+		# Load server data
+		for server_details in "${SERVER_LIST[@]}"
+		do
+			# Load data from SQL
+			IFS='|' read -a SERVER_DETAILS <<< "${server_details}"
+			# Set variables by reading array
+			server_id=${SERVER_DETAILS[0]}
+			server_name=${SERVER_DETAILS[1]}
+
+			# Get number of accounts
+			server_account_count=`$SQLITE_CMD $SQLITE_DB "select count(account_id) from accounts where server_id='$server_id'"`
+
+			if test "$list_type" == "html"
+			then
+				html_view="$html_view<br><br><br>Server: $server_name [Accounts: $server_account_count]<br>---------------------------------------------------------"
+			else
+				text_view="$text_view"$'\n'$'\n'$'\n'$"Server: $server_name [Accounts: $server_account_count]"$'\n'$"---------------------------------------------------------"
+			fi
+
+			# Get account list
+			mapfile -t ACCOUNTS_LIST < <($SQLITE_CMD $SQLITE_DB "select account_id,username,account_notes from accounts where server_id='$server_id' order by username")
+
+			# Show accounts for server or display none
+			if [ -n "$ACCOUNTS_LIST" ]
+			then
+				for account_data in "${ACCOUNTS_LIST[@]}"
+				do
+					# Load data from SQL
+					IFS='|' read -a ACCOUNT_DATA <<< "${account_data}"
+					# Set variables by reading array
+					account_id=${ACCOUNT_DATA[0]}
+					username=${ACCOUNT_DATA[1]}
+					account_notes=${ACCOUNT_DATA[2]}
+
+					# If account_notes is empty add none
+					if [ -z "$account_notes" ]
+					then
+						account_notes="None"
+					fi
+
+					if test "$list_type" == "html"
+					then
+						html_view="$html_view<br>* $username (ID: $account_id)"
+						# Add notes if requested
+						if test "$2" == "notes"
+						then
+							html_view="$html_view<br>Notes: $account_notes"
+						fi
+					else
+						text_view="$text_view"$'\n'$"* $username (ID: $account_id)"
+						# Add notes if requested
+						if test "$2" == "notes"
+						then
+							text_view="$text_view"$'\n'$"Notes: $account_notes"
+						fi
+					fi
+				done
+			else
+				if test "$list_type" == "html"
+				then
+					html_view="$html_view<br>* No accounts"
+				else
+					text_view="$text_view"$'\n'$"* No accounts"
+				fi
+			fi		
+		done
+		
+		# Display results
+		if test "$list_type" == "html"
+		then
+			HTML_WRITEOUT "By Server" "$html_view"
+		else
+			echo $'\n'$"By Server:$text_view"
+		fi
+	fi
+
+fi
+
+# Add an account
+######################################################################
+if test "$action" == "add-account"
+then
+	ACTION_BANNER "Add An Account"
+
+	# Get server record
+	LOAD_SERVER_RECORDS
+
+	# Load information if pass
+	if test "$server_details" == "pass"
+	then
+		account_confirm="yes"
+
+		# Update server/host record
+		echo "Adding Account To: $server_name"$'\n'
+
+		# Get account/username and trim
+		read -e -p "Account/username: " -i "" username
+		SANATIZE_VAR "$username"
+		username=$clean_var
+
+		# Get login type and trim
+		read -e -p "Login type? Enter password or key: " -i "key" login_type
+		SANATIZE_VAR "$login_type"
+		login_type=${clean_var:-key}
+
+		# Get key path, if necessary
+		if test "$login_type" == "key"
+		then
+
+			# Get key_path or current_path
+			mapfile -t KEY_PATH < <($SQLITE_CMD $SQLITE_DB "select config_value from config where config_name='key_path'")
+			if [ -n "$KEY_PATH" ]
+			then
+				cpath="$KEY_PATH"
+			else
+				cpath=`pwd`
+			fi
+			echo "Enter the path starting from *$cpath* to key file:"
+			read key_file
+			SANATIZE_VAR "$key_file"
+			key_file=$clean_var
+			login_type="1"
+			login_type_txt="Key file @ $key_file"
+		else
+			login_type="2"
+			login_type_txt="Password only"
+		fi
+
+		# Get remote directory, optional
+		echo "Optional: Specify the remote directory to load when connected:"
+		read remote_directory
+		SANATIZE_VAR "$remote_directory"
+		remote_directory=$clean_var
+
+		# Get the local mount point
+		echo "Enter full path to local mount point when connecting with sshfs:"
+		read mount_point
+		SANATIZE_VAR "$mount_point"
+		mount_point=$clean_var
+
+		# Get account notes
+		echo "Optional: Account notes"
+		read account_notes
+		SANATIZE_VAR "$account_notes"
+		account_notes=$clean_var
+
+		# Ask for confirmation
+		echo $'\n'$"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		echo "This will add the following account:"$'\n'
+		echo "-> Username: $username (on $server_name)"
+		echo "-> Login type: $login_type_txt"$'\n'"-> Remote directory: $remote_directory"$'\n'$"-> Mount point: $mount_point"
+		echo "[Notes] $account_notes"$'\n'
+		read -e -p "Type yes to save or no to cancel: " -i "yes" account_confirm
+
+		# If username or mount_point is empty set account_confirm to n
+		if [ -z "$username" ]
+		then
+			account_confirm="no"
+			ERROR_BANNER "No account/username provided!"
+		fi
+		# If login type is key and key_file is empty set account_confirm to n
+		if test "$login_type" == "1"
+		then
+			if [ -z "$key_file" ]
+			then
+				account_save="n"
+				ERROR_BANNER "No key file entered!"
+			fi
+		fi
+		# If mount point is empty set account_confirm to n
+		if [ -z "$mount_point" ]
+		then
+			account_confirm="no"
+			ERROR_BANNER "No local mount provided!"
+		fi
+
+		# Add record or not
+		if test "$account_confirm" == "yes"
+		then
+			account_save="y"
+
+			# Check to see if username exists for server
+			account_name_check=`$SQLITE_CMD $SQLITE_DB "select account_id from accounts where username='$username' and server_id='$server_id'"`
+			if [ -n "$account_name_check" ]
+			then
+				account_save="n"
+				ERROR_BANNER "$username already exists for $server_name!"
+			fi
+
+			# Save record or display already exists
+			if test "$account_save" == "y"
+			then			
+				$SQLITE_CMD $SQLITE_DB "insert into accounts (server_id,username,login_type,key_file,remote_directory,mount_point,account_notes) values ('$server_id','$username','$login_type','$key_file','$remote_directory','$mount_point','$account_notes')"
+				SUCCESS_BANNER "$username added to $server_name!"
+			else
+				FAILED_BANNER "Account not added!"
+			fi
+		else
+			FAILED_BANNER "Account not added!"
+		fi
+	fi
+fi
+
+# Update an account
+######################################################################
+if test "$action" == "update-account"
+then
+	ACTION_BANNER "Update An Account"
+
+	# Get account record
+	LOAD_ACCOUNT_RECORDS
+
+	# Load information if pass
+	if test "$account_details" == "pass"
+	then
+		account_confirm="yes"
+
+		echo $'\n'$"[EDITING] $username on $server_name"$'\n'
+
+		# Get account/username and trim
+		read -e -p "Account/username: " -i "$username" username
+		SANATIZE_VAR "$username"
+		username=$clean_var
+
+		# Get login type and trim
+		if test "$login_type" == "1"
+		then
+			login_type="key"
+		else
+			login_type="password"
+		fi
+		read -e -p "Login type? Enter password or key: " -i "$login_type" login_type
+		SANATIZE_VAR "$login_type"
+		login_type=${clean_var:-key}
+
+		# Get key path, if necessary
+		if test "$login_type" == "key"
+		then
+			# Get key_path or current_path
+			mapfile -t KEY_PATH < <($SQLITE_CMD $SQLITE_DB "select config_value from config where config_name='key_path'")
+			if [ -n "$KEY_PATH" ]
+			then
+				cpath="$KEY_PATH"
+			else
+				cpath=`pwd`
+			fi
+			echo "* Enter the path starting from *$cpath* to key file:"
+			read -e -p "" -i "$key_file" key_file
+			SANATIZE_VAR "$key_file"
+			key_file=$clean_var
+			login_type="1"
+			login_type_txt="Key file @ $key_file"
+		else
+			login_type="2"
+			login_type_txt="Password only"
+		fi
+
+		# Get remote directory, optional
+		echo "* Optional: Specify the remote directory to load when connected:"
+		read -e -p "" -i "$remote_directory" remote_directory
+		SANATIZE_VAR "$remote_directory"
+		remote_directory=$clean_var
+
+		# Get the local mount point
+		echo "* Enter full path to local mount point when connecting with sshfs:"
+		read -e -p "" -i "$mount_point" mount_point
+		SANATIZE_VAR "$mount_point"
+		mount_point=$clean_var
+
+		# Get account notes
+		echo "* Optional: Account notes"
+		read -e -p "" -i "$account_notes" account_notes
+		SANATIZE_VAR "$account_notes"
+		account_notes=$clean_var
+
+		# Ask for confirmation
+		echo $'\n'$"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+		echo "This will update the following:"$'\n'
+		echo "-> Username: $username (on $server_name)"
+		echo "-> Login type: $login_type_txt"$'\n'"-> Remote directory: $remote_directory"$'\n'$"-> Mount point: $mount_point"
+		echo "[Notes] $account_notes"$'\n'
+		read -e -p "Type yes to save or no to cancel: " -i "no" account_confirm
+
+		# If username or mount_point is empty set account_confirm to n
+		if [ -z "$username" ]
+		then
+			account_confirm="no"
+			ERROR_BANNER "No account/username provided!"
+		fi
+		# If login type is key and key_file is empty set account_confirm to n
+		if test "$login_type" == "1"
+		then
+			if [ -z "$key_file" ]
+			then
+				account_save="n"
+				ERROR_BANNER "No key file entered!"
+			fi
+		fi
+		# If mount point is empty set account_confirm to n
+		if [ -z "$mount_point" ]
+		then
+			account_confirm="no"
+			ERROR_BANNER "No local mount provided!"
+		fi
+
+		# Save record or not
+		if test "$account_confirm" == "yes"
+		then
+			account_save="y"
+
+			# Check to see if username exists for server
+			account_name_check=`$SQLITE_CMD $SQLITE_DB "select account_id from accounts where username='$username' and server_id='$server_id'"`
+			if [ -n "$account_name_check" ]
+			then
+				if test "$account_name_check" -ne "$account_id"
+				then
+					account_save="n"
+					ERROR_BANNER "$username already exists on $server_name!"
+				fi
+			fi
+
+			# Save record or display already exists
+			if test "$account_save" == "y"
+			then			
+				$SQLITE_CMD $SQLITE_DB "update accounts set username='$username',login_type='$login_type',key_file='$key_file',remote_directory='$remote_directory',mount_point='$mount_point',account_notes='$account_notes' where account_id='$account_id' and server_id='$server_id'"
+				SUCCESS_BANNER "$username updated on $server_name!"
+			else
+				FAILED_BANNER "$username not updated!"
+			fi
+		else
+			FAILED_BANNER "$username not updated!"
+		fi
+	fi
+fi
+
+# Delete an account
+######################################################################
+if test "$action" == "delete-account"
+then
+	ACTION_BANNER "Delete An Account"
+
+	# Get account record
+	LOAD_ACCOUNT_RECORDS
+
+	# Load information if pass
+	if test "$account_details" == "pass"
+	then
+
+		echo $'\n'$"You are about to delete the following username: "$'\n'$'\n'$"$username on $server_name"$'\n'
+		read -e -p "Type yes to delete or no to cancel: " -i "no" account_update_confirm
+
+		# Delete record or not
+		if test "$account_update_confirm" == "yes"
+		then
+			server_delete="y"
+
+			$SQLITE_CMD $SQLITE_DB "delete from accounts where account_id='$account_id'"
+			SUCCESS_BANNER "$username on $server_name deleted!"
+
+		else
+			FAILED_BANNER "$username on $server_name not deleted!"
+		fi
+	fi
+fi
+
+# Connection long form
+######################################################################
+if test "$action" == "connect"
+then
+	ACTION_BANNER "Pick Account To Make Connection"
+
+	# Get account record
+	LOAD_ACCOUNT_RECORDS
+
+	# Load information if pass
+	if test "$account_details" == "pass"
+	then
+		# Get ssh type
+		echo "Which method of connection do you want to establish?"
+		read -e -p "Type ssh or sshfs: " -i "ssh" ssh_type
+
+		# Connect to server
+		ESTABLISH_CONNECTION
+	else
+		FAILED_BANNER "Account on given server does not exist!"
+	fi
+fi
+
+# Connection short form
+######################################################################
+if test "$action" == "go"
+then
+	ACTION_BANNER "Connecting To Account"
+
+	# Load account_id from commandline
+	account_id="$2"
+	# Load ssh type from commandline
+	ssh_type="ssh$3"
+
+	if [ -z "$account_id" ]
+	then
+		account_id='empty'
+	fi
+
+	# Get account details for account_id or display error
+	account_details=`$SQLITE_CMD $SQLITE_DB "select account_id,server_id,username,login_type,key_file,remote_directory,mount_point from accounts where account_id='$account_id'"`
+	if [ -n "$account_details" ]
+	then
+		# Load data from SQL
+		IFS='|' read -a ACCOUNT_DETAILS <<< "${account_details}"
+		# Set variables by reading array
+		account_id=${ACCOUNT_DETAILS[0]}
+		server_id=${ACCOUNT_DETAILS[1]}
+		username=${ACCOUNT_DETAILS[2]}
+		login_type=${ACCOUNT_DETAILS[3]}
+		key_file=${ACCOUNT_DETAILS[4]}
+		remote_directory=${ACCOUNT_DETAILS[5]}
+		mount_point=${ACCOUNT_DETAILS[6]}
+
+		# Get server details
+		server_details=`$SQLITE_CMD $SQLITE_DB "select server_name,server_address,server_port,server_notes from servers where server_id='$server_id'"`
+		# Load data from SQL
+		IFS='|' read -a SERVER_DETAILS <<< "${server_details}"
+		# Set variables by reading array
+		server_name=${SERVER_DETAILS[0]}
+		server_address=${SERVER_DETAILS[1]}
+		server_port=${SERVER_DETAILS[2]}
+		server_notes=${SERVER_DETAILS[3]}
+
+		# Connect to server
+		ESTABLISH_CONNECTION
+	else
+		echo "ID tried: $account_id"
+		FAILED_BANNER "No username for given ID!"
+	fi
+fi
+
+# Disconnection long form
+######################################################################
+if test "$action" == "disconnect"
+then
+	ACTION_BANNER "Pick Account To Disconnect SSHFS Mount"
+
+	# Get account record
+	LOAD_ACCOUNT_RECORDS
+
+	# Load information if pass
+	if test "$account_details" == "pass"
+	then
+		# Disconnect from server
+		DISCONNECT_SSHFS "$mount_point"
+
+
+	else
+		FAILED_BANNER "Account on given server does not exist!"
+	fi
+fi
+
+# Disconnection short form
+######################################################################
+if test "$action" == "end"
+then
+	ACTION_BANNER "Disconnecting A SSHFS Mount"
+
+	account_details="fail"
+
+	mount_point="$2"
+
+	# If account ID passed get mount point
+	if [[ "$mount_point" =~ ^[0-9]+$ ]]
+	then
+		# Get mount point
+		mount_point=`$SQLITE_CMD $SQLITE_DB "select mount_point from accounts where account_id='$mount_point'"`
+	fi
+
+	# If mount point isn't blank pass
+	if [ -n "$mount_point" ]
+	then
+		account_details="pass"
+	fi
+
+	# Load information if pass
+	if test "$account_details" == "pass"
+	then
+		# Disconnect from server
+		DISCONNECT_SSHFS "$mount_point"
+	else
+		FAILED_BANNER "Account on given server does not exist!"
+	fi
+fi
+
+# Credits
+######################################################################
+if test "$action" == "credits"
+then
+	ACTION_BANNER "Credits"
+
+	echo "Lead programmer: Jeremy O'Connell"
+	echo "[] Cyberweb Solutions, LLC @ www.CyberWS.com"$'\n'
+	echo "Testing and collaboration: Joe Collins"
+	echo "[] EzeeLinux @ www.EzeeLinux.com"
+fi
+
+# List valid actions
+######################################################################
+if test "$action" == "help"
+then
+	ACTION_BANNER "Listing Available Commands"
+
+	SCRIPT_NAME="${0##*/}"
+
+	echo "Please type in one of the following commands:"$'\n'
+	echo "$SCRIPT_NAME COMMAND"$'\n'$'\n'$"Columns: COMMAND SHORTCUT DESCRIPTION"$'\n'
+
+	MENU_HEADER "Connection To Account"
+	MENU_ITEM "connect" "co" "Connect to an account"
+	echo $'\n'$"Shorthand:"$'\n'$"go ACCOUNT_ID [fs]"$'\n'
+	echo "Examples Of Commands Connecting:"$'\n'$"* Account 24 SSHFS: go 24 fs"$'\n'$"* Account 32 SSH: go 32"
+
+	MENU_HEADER "Disconnect SSHFS"
+	MENU_ITEM "disconnect" "dc" "Disconnect a SSHFS"
+	echo $'\n'$"Shorthand:"$'\n'$"end ACCOUNT_ID or MOUNT_POINT"$'\n'
+	echo "Examples Of Commands Disconnecting:"$'\n'$"* Account 24: end 24"$'\n'$"* ~/mnt/server45: end ~/mnt/server45"
+
+	MENU_HEADER "Server Actions"
+	MENU_ITEM "add-server" "as" "Adds a new server/host"
+	MENU_ITEM "update-server" "us" "Update a saved server/host"
+	MENU_ITEM "delete-server" "ds" "Delete a saved server/host"
+	MENU_ITEM "list-servers" "ls" "Lists saved servers/hosts"
+
+	MENU_HEADER "Account Actions"
+	MENU_ITEM "add-account" "aa" "Adds a new account/username"
+	MENU_ITEM "update-account" "ua" "Update a saved account/username"
+	MENU_ITEM "delete-account" "da" "Delete a saved account/username"
+	MENU_ITEM "list-accounts" "la" "Lists saved accounts/usernames (text or html)"
+
+	MENU_HEADER "Other Actions"
+	MENU_ITEM "credits" "cs" "View programmers/contributors"
+fi
+
+# List valid actions
+######################################################################
+if test "$ACTION_BANNER" == "off"
+then
+	ACTION_BANNER "Enter A Valid Command"
+
+	SCRIPT_NAME="${0##*/}"
+
+	echo "Please enter a valid command.  To list commands enter:"$'\n'$'\n'$"$SCRIPT_NAME help"
+fi
+
+# Display footer
+######################################################################
+DISPLAY_FOOTER
+
