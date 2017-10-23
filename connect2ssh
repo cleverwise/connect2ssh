@@ -1,7 +1,7 @@
 #!/bin/bash
 
 : <<HEADER
-SSH(FS) BASH CONNECTOR v1.4 on 19 October 2017
+SSH(FS) BASH CONNECTOR v1.5 on 23 October 2017
 Copyright (c) 2017 by Jeremy O'Connell - Cyberweb Solutions, LLC @ www.cyberws.com
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -20,7 +20,7 @@ HEADER
 ######################################################################
 
 # Version number
-VERSION="1.4"
+VERSION="1.5"
 
 # Title variable
 TITLE="SSH(FS) BASH CONNECTOR"
@@ -48,6 +48,7 @@ ACTION_SHORTCUTS[co]="connect"
 ACTION_SHORTCUTS[dc]="disconnect"
 ACTION_SHORTCUTS[cs]="credits"
 ACTION_SHORTCUTS[vc]="version"
+ACTION_SHORTCUTS[sw]="software"
 
 for ACTION_SHORTCUT in "${!ACTION_SHORTCUTS[@]}"
 do
@@ -1430,6 +1431,18 @@ then
 	echo $'\n'$"Github: https://github.com/cleverwise/connect2ssh"
 fi
 
+# Software
+######################################################################
+if test "$action" == "software"
+then
+	ACTION_BANNER "Software Titles"
+
+	# Load current software from github
+	GH_SOFTWARE=`curl -s https://raw.githubusercontent.com/cleverwise/connect2ssh/master/software`
+
+	echo "$GH_SOFTWARE"
+fi
+
 # Credits
 ######################################################################
 if test "$action" == "credits"
@@ -1437,9 +1450,9 @@ then
 	ACTION_BANNER "Credits"
 
 	echo "Lead programmer: Jeremy O'Connell"
-	echo "‣ Cyberweb Solutions, LLC @ www.CyberWS.com"$'\n'
+	echo "🗁  Cyberweb Solutions, LLC -> www.CyberWS.com"$'\n'
 	echo "Testing and collaboration: Joe Collins"
-	echo "‣ EzeeLinux @ www.EzeeLinux.com"
+	echo "🗁  EzeeLinux -> www.EzeeLinux.com"
 fi
 
 # List valid actions
@@ -1476,8 +1489,9 @@ then
 	MENU_ITEM "list-accounts" "la" "Lists saved accounts/usernames (text or html)"
 
 	MENU_HEADER "Other Actions"
-	MENU_ITEM "credits" "cs" "View programmers/contributors"
 	MENU_ITEM "version" "vc" "Check for current version"
+	MENU_ITEM "software" "sw" "View software titles"
+	MENU_ITEM "credits" "cs" "View programmers/contributors"
 fi
 
 # List valid actions
