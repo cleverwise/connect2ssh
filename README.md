@@ -4,7 +4,7 @@ This open source and freely available tool is written to run in the BASH shell a
 
 More information: [https://www.cyberws.com/bash/connect2ssh/](https://www.cyberws.com/bash/connect2ssh/)
 
-Need help using Connect2SSH? [Youtube Instruction Videos](https://www.youtube.com/channel/UCeQtI9fcAapQkiHph42NjWA)
+Need help using Connect2SSH? [Youtube Instruction Videos](https://www.youtube.com/watch?v=gQsglNH-w4M&list=PL7DdW0jxJRrGbjomR6bgwmyeRUvt7jHOT)
 
 ----
 
