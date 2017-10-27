@@ -1,4 +1,4 @@
-## Contributers Readme
+## Contributors Readme
 
 Obviously you are free to edit the code on your copy(ies) to tailor the utility for your needs and environments.  Still you are free to submit ideas to Jeremy O'Connell, the lead developer, for consideration to the main branch.  There are contact methods in the README.md file or you may view the Github project page.
 
