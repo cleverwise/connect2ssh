@@ -18,6 +18,8 @@ Need help using Connect2SSH? [Youtube Instruction Videos](https://www.youtube.co
 
 If contacting for technical support please see video manuals first.  I'll do my best to help troubleshoot but can't make any promises due to limited time.
 
+Contributors please see the "[Contributors Readme](contributors.md)" for important information.
+
 * Message through Github
 * [Contact Form on CyberWS](https://www.cyberws.com/contact-us/)
 
@@ -74,5 +76,4 @@ Of course!  However becareful when modifying the database as you could render th
 #### What is this nohup.out file?
 
 It is the nohangup output file so SSHFS connections aren’t terminated when started by Connect2SSH.  It is harmless.  You may delete it but it will just come back when you generate new SSHFS connections.  In most situations it should remain completely empty.  Yes output could be redirected to /dev/null but a file was chosen just in case of troubleshooting and again it is just a simple file so it isn’t taxing your system.
-
 
