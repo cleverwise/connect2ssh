@@ -1,7 +1,7 @@
 #!/bin/bash
 
 : <<HEADER
-SSH(FS) BASH CONNECTOR v1.5 on 23 October 2017
+SSH(FS) BASH CONNECTOR v1.6 on 1 December 2017
 Copyright (c) 2017 by Jeremy O'Connell - Cyberweb Solutions, LLC @ www.cyberws.com
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -20,7 +20,7 @@ HEADER
 ######################################################################
 
 # Version number
-VERSION="1.5"
+VERSION="1.6"
 
 # Title variable
 TITLE="SSH(FS) BASH CONNECTOR"
@@ -404,6 +404,13 @@ ESTABLISH_CONNECTION() {
 		then
 			# Add to connection options
 			connect_options="$connect_options -i $cpath/$key_file"
+		fi
+
+		# Check to start X session
+		if test "$ssh_type" == "sshx"
+		then
+			# Add to connection options
+			connect_options="$connect_options -X"
 		fi
 
 		# Issue SSH command
@@ -1294,7 +1301,7 @@ then
 	then
 		# Get ssh type
 		echo "Which method of connection do you want to establish?"
-		read -e -p "Type ssh or sshfs: " -i "ssh" ssh_type
+		read -e -p "Type ssh => standard SSH, sshx => SSH with X, sshfs => Mount filesystem: " -i "ssh" ssh_type
 
 		# Connect to server
 		ESTABLISH_CONNECTION
@@ -1451,8 +1458,10 @@ then
 
 	echo "Lead programmer: Jeremy O'Connell"
 	echo "🗁  Cyberweb Solutions, LLC -> www.CyberWS.com"$'\n'
-	echo "Testing and collaboration: Joe Collins"
-	echo "🗁  EzeeLinux -> www.EzeeLinux.com"
+	echo "Lead collaborator and tester: Joe Collins"
+	echo "🗁  EzeeLinux -> www.EzeeLinux.com"$'\n'
+	echo "Additional collaborators and testers:"
+	echo "* Jeff Taffuri (X session support)"
 fi
 
 # List valid actions
@@ -1468,8 +1477,8 @@ then
 
 	MENU_HEADER "Connection To Account"
 	MENU_ITEM "connect" "co" "Connect to an account"
-	echo $'\n'$"Shorthand:"$'\n'$"go ACCOUNT_ID [fs]"$'\n'
-	echo "Examples Of Commands Connecting:"$'\n'$"* Account 24 SSHFS: go 24 fs"$'\n'$"* Account 32 SSH: go 32"
+	echo $'\n'$"Shorthand:"$'\n'$"go ACCOUNT_ID [fs/x]"$'\n'
+	echo "Examples Of Commands Connecting:"$'\n'$"* Account 24 SSHFS: go 24 fs"$'\n'$"* Account 32 SSH: go 32"$'\n'$"* Account 32 SSH with X: go 32 x"
 
 	MENU_HEADER "Disconnect SSHFS"
 	MENU_ITEM "disconnect" "dc" "Disconnect a SSHFS"

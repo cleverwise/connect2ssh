@@ -1,3 +1,6 @@
+
+
+
 # connect2ssh
 
 This open source and freely available tool is written to run in the BASH shell and allows for management and connection to computers via SSH and SSHFS via key file(s) and/or password(s) without compromising security. It also requires zero system configuration file changes, uses standard well known libraries, is easily removed, and even portable.
@@ -42,6 +45,26 @@ What? You want to remove Connect2SSH? Why!? :-(
 1) Remove the **connect2ssh** file itself; where ever you installed it.  If necessary use whereis or find commands to locate the file.
 2) Now delete the directory **/home/YOUR_USER/.config/connect2ssh** - it may be necesssary to remove /.config/connect2ssh from other users' home directories.  It depends on if other users ran the command.
 3) Done.  Now reinstall it right? ;-)
+
+## Quick Connecting
+
+It is recommended you see the help section for a complete list of commands.  Still once you have added your hosts (nodes) into Connect2SSH along with attached accounts you may quickly connect to them using shortcut commands.
+
+For example let's say you want to connect to account 28.
+
+To launch a standard SSH session:
+
+shell> **connect2ssh go 28**
+
+To launch a SSH session with X support:
+
+shell> **connect2ssh go 28 x**
+
+To mount an account with SSHFS:
+
+shell> **connect2ssh go 28 fs**
+
+It should be noted all the above commands will automatically insert the port and IP/hostname as entered in the host (node) record.  This includes appending any defined key file.  This eliminates the need for you to type all that information into the command line.  You'll quickly memorize common account numbers and wonder how you lived without Connect2SSH.
 
 ## Customizing
 
