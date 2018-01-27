@@ -1,7 +1,7 @@
 #!/bin/bash
 
 : <<HEADER
-SSH(FS) BASH CONNECTOR v1.6 on 1 December 2017
+SSH(FS) BASH CONNECTOR v1.8 on 27 January 2018
 Copyright (c) 2017 by Jeremy O'Connell - Cyberweb Solutions, LLC @ www.cyberws.com
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -20,7 +20,7 @@ HEADER
 ######################################################################
 
 # Version number
-VERSION="1.6"
+VERSION="1.8"
 
 # Title variable
 TITLE="SSH(FS) BASH CONNECTOR"
@@ -67,8 +67,14 @@ HOME_DIR=`echo ~`
 
 # Set SQLITE 
 
+# Load configuration path
+CONFIG_PATH="$HOME_DIR/.config/connect2ssh"
+
 # Load configuration file
-CONFIG_FILE_PATH="$HOME_DIR/.config/connect2ssh/config"
+CONFIG_FILE_PATH="$CONFIG_PATH/config"
+
+# Version timestamp file
+versiontsfile="$CONFIG_PATH/versionts"
 
 # Declare CONFIG_ARRAY
 declare -A CONFIG_ARRAY
@@ -517,6 +523,45 @@ INITIALIZE_DB() {
 
 	echo $'\n'$"[Action] $1"$'\n'
 }
+
+
+######################################################################
+# Display version reminder check
+######################################################################
+
+# Get current timestamp
+curts=`date +%s`
+
+# Calculate 60 days ago in unixtime
+olduts=$(($curts-5184000))
+
+# Write version timestamp file, if missing
+if [ -f "$versiontsfile" ]
+then
+	fileuts=`cat $versiontsfile`
+else
+	echo "$curts" > $versiontsfile
+	fileuts="$curts"
+fi
+
+# Compare filets with olduts and display message if necessary
+if (($olduts > $fileuts))
+then
+	echo "Your version could be out of date!  You haven't checked in 60 days."
+	echo -n "Would you like to check for a new version? [Yn] "
+	read CHKVERSION
+
+	# Update version reminder timestamp file
+	echo "$curts" > $versiontsfile
+	echo $'\n'"-> Version reminder check updated to remind in 60 days"
+
+	if test "$CHKVERSION" == "n"
+	then
+		echo "Skipping version check, but highly recommended!"
+	else
+		action="version"
+	fi
+fi
 
 ######################################################################
 # Actions
@@ -1425,11 +1470,11 @@ then
 		MSG="🗷 ERROR: UNABLE TO CONNECT TO GITHUB VERSION CHECK!!!"
 		GH_VERSION="Unknown - can NOT connect to GitHub"
 	else
-		if test $GH_VERSION == $VERSION
+		if (( $(echo "$GH_VERSION > $VERSION" | bc -l) ))
 		then
-			MSG="🗹 LATEST VERSION!"
-		else
 			MSG="🗷 UPGRADE REQUIRED! VERSIONS DO NOT MATCH!"
+		else
+			MSG="🗹 LATEST VERSION!"
 		fi
 	fi
 	echo "$MSG"$'\n'

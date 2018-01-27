@@ -1,3 +1,7 @@
+1.8 - 27 Jan 2018
+* Added version check reminder
+* Even version numbers are now production with odd development
+
 1.6 - 1 Dec 2017
 * Added SSH X support
 
