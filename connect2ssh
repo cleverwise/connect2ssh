@@ -1,7 +1,7 @@
 #!/bin/bash
 
 : <<HEADER
-SSH(FS) BASH CONNECTOR v1.8 on 27 January 2018
+SSH(FS) BASH CONNECTOR v2.0 on 30 January 2018
 Copyright (c) 2017 by Jeremy O'Connell - Cyberweb Solutions, LLC @ www.cyberws.com
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -20,7 +20,7 @@ HEADER
 ######################################################################
 
 # Version number
-VERSION="1.8"
+VERSION="2.0"
 
 # Title variable
 TITLE="SSH(FS) BASH CONNECTOR"
@@ -63,7 +63,7 @@ done
 # Load configuration file and set database
 ####################################################################
 # Get home directory
-HOME_DIR=`echo ~`
+HOME_DIR="/home/"$USER
 
 # Set SQLITE 
 

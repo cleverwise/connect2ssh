@@ -1,3 +1,6 @@
+2.0 - 30 Jan 2018
+* Altered home directory code to eliminate "Key file ~/.ssh/xyz does NOT exist!" message on some setups
+
 1.8 - 27 Jan 2018
 * Added version check reminder
 * Even version numbers are now production with odd development
