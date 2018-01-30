@@ -3,3 +3,6 @@ Connect2SSH - SSH & SSHFS connection manager (BASH)
 
 cya - Linux/Unix total system restore (BASH)
 👁 https://github.com/cleverwise/cya
+
+pdisks - Protect disks from DD deletion (BASH)
+👁 https://github.com/cleverwise/pdisks
