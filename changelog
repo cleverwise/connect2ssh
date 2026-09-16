@@ -1,3 +1,6 @@
+2.4 - 16 Sept 2026
+* Minor display changes to make the system quieter
+
 2.0 - 30 Jan 2018
 * Altered home directory code to eliminate "Key file ~/.ssh/xyz does NOT exist!" message on some setups
 

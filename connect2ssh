@@ -1,7 +1,7 @@
 #!/bin/bash
 
 : <<HEADER
-SSH(FS) BASH CONNECTOR v2.0 on 30 January 2018
+SSH(FS) BASH CONNECTOR v2.4 on 16 Sept 2026
 Copyright (c) 2017 by Jeremy O'Connell - Cyberweb Solutions, LLC @ www.cyberws.com
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -20,10 +20,10 @@ HEADER
 ######################################################################
 
 # Version number
-VERSION="2.0"
+VERSION="2.4"
 
 # Title variable
-TITLE="SSH(FS) BASH CONNECTOR"
+TITLE="CONNECT2SSH"
 
 # sqlite3 command
 SQLITE_CMD="sqlite3"
@@ -55,7 +55,6 @@ do
 	if test "$action" == "$ACTION_SHORTCUT"
 	then
 		action=${ACTION_SHORTCUTS[$ACTION_SHORTCUT]}
-		echo "$action"
 	fi
 done
 
@@ -106,9 +105,8 @@ fi
 # Header
 ######################################################################
 
-#echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-echo "☀ $TITLE v$VERSION ☀"$'\n'
-#echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"$'\n'
+## Go quiet
+## echo -n "C2S(v$VERSION) "
 
 ######################################################################
 # Functions
@@ -117,7 +115,8 @@ echo "☀ $TITLE v$VERSION ☀"$'\n'
 # Footer
 ######################################################################
 DISPLAY_FOOTER() {
-	echo $'\n'$"-------------------------------------------------------------------"$'\n'$"🖧 Let's connect to something!"$'\n'
+	#echo $'\n'$"-------------------------------------------------------------------"$'\n'$"🖧 Let's connect to something!"$'\n'
+	FOOTER_STATUS="off"
 }
 
 # Display install package notices
@@ -189,8 +188,7 @@ ACTION_BANNER() {
 		# Check script version against database version
 		VERSION_CHECK
 
-		ACTION_BANNER="on"
-		echo "ACTION ⯮ $1"$'\n'
+		## echo $1$'\n'
 	else
 		INITIALIZE_DB "$1"
 	fi
@@ -205,25 +203,27 @@ ERROR_BANNER() {
 # Display success banner
 ######################################################################
 SUCCESS_BANNER() {
-	echo $'\n'$"🗹 SUCCESS: $1"
+	echo $'\n'$"SUCCESS: $1"
 }
 
 # Display failed banner
 ######################################################################
 FAILED_BANNER() {
-	echo $'\n'$"🗵 FAILED: $1"
+	echo $'\n'$"FAILED: $1"
 }
 
 # Menu Header display
 ######################################################################
 MENU_HEADER() {
-	echo $'\n'$"$1:"$'\n'$"------------------------------------------------------------"
+	HELP_OUTPUT=${HELP_OUTPUT}$'\n'$'\n'$"$1:"$'\n'$"------------------------------------------------------------"
 }
 
 # Menu Item display
 ######################################################################
 MENU_ITEM() {
-	printf "%-18s %-2s %-2s %-2s %s\n" $1 "" "$2" "" "$3";
+	#printf "%-18s %-2s %-2s %-2s %s\n" $1 "" "$2" "" "$3";
+	MENU_ITEM_OUTPUT=$(printf "%-18s %-2s %-2s %-2s %s\n" $1 "" "$2" "" "$3")
+	HELP_OUTPUT="${HELP_OUTPUT}"$'\n'$"${MENU_ITEM_OUTPUT}"
 }
 
 # Remove ', " and trim
@@ -240,7 +240,7 @@ SANATIZE_VAR() {
 ######################################################################
 HTML_WRITEOUT() {
 	# Key variables
-	TITLE_BUILD="$TITLE v$VERSION - HTML Output"
+	TITLE_BUILD="$TITLE (v$VERSION) - HTML Output"
 	W3M_USAGE="<p><b><u>[USAGE] To exit hit q then y</u></b></p>"
 	HTML_PAGENAME="$HOME_DIR/.config/connect2ssh/connect2ssh.html"
 
@@ -919,11 +919,10 @@ then
 		# Set notice for view notes
 		if test "$list_type" == "html"
 		then
-			html_view="<br><br>Note: To view account notes rerun command and add space notes"
+			html_view="To view account notes rerun command and add space notes"
 		else
-			text_view=$'\n'$'\n'$"Note: To view account notes rerun command and add space notes"
+			text_view="To view account notes rerun command and add space notes"
 		fi
-		echo
 
 		# Get server list
 		mapfile -t SERVER_LIST < <($SQLITE_CMD $SQLITE_DB "select server_id,server_name from servers order by server_name")
@@ -933,9 +932,9 @@ then
 		then
 			if test $list_type == "html"
 			then
-				server_list_returns="<br><br><br>"
+				server_list_returns="<br><br>"
 			else
-				server_list_returns=$'\n'$'\n'$'\n'
+				server_list_returns=$'\n'$'\n'
 			fi
 		else
 			if test $list_type == "html"
@@ -956,14 +955,15 @@ then
 			server_name=${SERVER_DETAILS[1]}
 
 			# Get number of accounts
-			server_account_count=`$SQLITE_CMD $SQLITE_DB "select count(account_id) from accounts where server_id='$server_id'"`
-
+			##	server_account_count=`$SQLITE_CMD $SQLITE_DB "select count(account_id) from accounts where server_id='$server_id'"`
+			##	|| Records: $server_account_count)
+			
 			if test "$list_type" == "html"
 			then
-				html_view="$html_view$server_list_returns"$"Server: $server_name [Accounts: $server_account_count]<br>---------------------------------------------------------<br>"
+				html_view="$html_view$server_list_returns"$"$server_name (ID: $server_id)<br>---------------------------------------------------------<br>"
 			else
 				
-				text_view="$text_view$server_list_returns"$"Server: $server_name [Accounts: $server_account_count]"$'\n'$"---------------------------------------------------------"$'\n'
+				text_view="$text_view$server_list_returns"$"$server_name (ID: $server_id) "
 			fi
 
 			# Get account list
@@ -991,9 +991,9 @@ then
 					then
 						if test "$list_compact" == "y"
 						then
-							html_view="$html_view* $username ($account_id) "
+							html_view="$html_view‣ $username ($account_id) "
 						else
-							html_view="$html_view* $username (ID: $account_id)"
+							html_view="$html_view‣ $username (ID: $account_id)"
 							# Add notes if requested
 							if test "$2" == "notes"
 							then
@@ -1004,15 +1004,15 @@ then
 					else
 						if test "$list_compact" == "y"
 						then
-							text_view="$text_view* $username ($account_id) "
+							text_view="$text_view‣ $username ($account_id) "
 						else 
-							text_view="$text_view* $username (ID: $account_id)"
+							text_view="$text_view"$'\n'$"‣ $username (ID: $account_id)"
 							# Add notes if requested
 							if test "$2" == "notes"
 							then
 								text_view="$text_view [Notes] $account_notes"
 							fi
-							text_view="$text_view"$'\n'
+							text_view="$text_view"
 						fi
 					fi
 				done
@@ -1037,9 +1037,9 @@ then
 		# Display results
 		if test "$list_type" == "html"
 		then
-			HTML_WRITEOUT "By Server" "$html_view"
+			HTML_WRITEOUT "$html_view"
 		else
-			echo $'\n'$"By Server:$text_view"
+			echo $'\n'$"$text_view"$'\n'
 		fi
 	fi
 
@@ -1467,14 +1467,14 @@ then
 
 	if [ -z $GH_VERSION ]
 	then
-		MSG="🗷 ERROR: UNABLE TO CONNECT TO GITHUB VERSION CHECK!!!"
+		MSG="ERROR: UNABLE TO CONNECT TO GITHUB VERSION CHECK!!!"
 		GH_VERSION="Unknown - can NOT connect to GitHub"
 	else
 		if (( $(echo "$GH_VERSION > $VERSION" | bc -l) ))
 		then
-			MSG="🗷 UPGRADE REQUIRED! VERSIONS DO NOT MATCH!"
+			MSG="UPGRADE REQUIRED! VERSIONS DO NOT MATCH!"
 		else
-			MSG="🗹 LATEST VERSION!"
+			MSG="LATEST VERSION!"
 		fi
 	fi
 	echo "$MSG"$'\n'
@@ -1502,9 +1502,8 @@ then
 	ACTION_BANNER "Credits"
 
 	echo "Lead programmer: Jeremy O'Connell"
-	echo "🗁  Cyberweb Solutions, LLC -> www.CyberWS.com"$'\n'
+	echo "* Cyberweb Solutions, LLC -> www.CyberWS.com"$'\n'
 	echo "Lead collaborator and tester: Joe Collins"
-	echo "🗁  EzeeLinux -> www.EzeeLinux.com"$'\n'
 	echo "Additional collaborators and testers:"
 	echo "* Jeff Taffuri (X session support)"
 fi
@@ -1517,18 +1516,50 @@ then
 
 	SCRIPT_NAME="${0##*/}"
 
-	echo "Please type in one of the following commands:"$'\n'
-	echo "$SCRIPT_NAME COMMAND"$'\n'$'\n'$"Columns: COMMAND SHORTCUT DESCRIPTION"$'\n'
+        echo $'\n'$"Connect2SSH (v$VERSION)"$'\n'
+
+	HELP_OUTPUT=""
+
+read -r -d '' HELP_OUTPUT << EOM
+${HELP_OUTPUT}Video Tutorial Playlist:
+https://www.youtube.com/watch?v=gQsglNH-w4M&list=PL7DdW0jxJRrGbjomR6bgwmyeRUvt7jHOT
+
+Please type in one of the following commands:
+
+$SCRIPT_NAME COMMAND
+
+Columns: COMMAND SHORTCUT DESCRIPTION
+EOM
 
 	MENU_HEADER "Connection To Account"
 	MENU_ITEM "connect" "co" "Connect to an account"
-	echo $'\n'$"Shorthand:"$'\n'$"go ACCOUNT_ID [fs/x]"$'\n'
-	echo "Examples Of Commands Connecting:"$'\n'$"* Account 24 SSHFS: go 24 fs"$'\n'$"* Account 32 SSH: go 32"$'\n'$"* Account 32 SSH with X: go 32 x"
+
+read -r -d '' HELP_OUTPUT << EOM
+${HELP_OUTPUT}
+
+Shorthand:
+go ACCOUNT_ID [fs/x]
+
+Examples Of Commands Connecting:
+* Account 24 SSHFS: go 24 fs
+* Account 32 SSH: go 32
+* Account 32 SSH with X: go 32 x
+
+EOM
 
 	MENU_HEADER "Disconnect SSHFS"
 	MENU_ITEM "disconnect" "dc" "Disconnect a SSHFS"
-	echo $'\n'$"Shorthand:"$'\n'$"end ACCOUNT_ID or MOUNT_POINT"$'\n'
-	echo "Examples Of Commands Disconnecting:"$'\n'$"* Account 24: end 24"$'\n'$"* ~/mnt/server45: end ~/mnt/server45"
+	
+read -r -d '' HELP_OUTPUT << EOM
+${HELP_OUTPUT}
+
+Shorthand:
+end ACCOUNT_ID or MOUNT_POINT
+
+Examples Of Commands Disconnecting:
+* Account 24: end 24
+* ~/mnt/server45: end ~/mnt/server45
+EOM
 
 	MENU_HEADER "Server Actions"
 	MENU_ITEM "add-server" "as" "Adds a new server/host"
@@ -1546,6 +1577,9 @@ then
 	MENU_ITEM "version" "vc" "Check for current version"
 	MENU_ITEM "software" "sw" "View software titles"
 	MENU_ITEM "credits" "cs" "View programmers/contributors"
+
+	
+	echo "$HELP_OUTPUT" | more
 fi
 
 # List valid actions
@@ -1556,7 +1590,8 @@ then
 
 	SCRIPT_NAME="${0##*/}"
 
-	echo "Please enter a valid command.  To list commands enter:"$'\n'$'\n'$"$SCRIPT_NAME help"
+	#echo "Please enter a valid command.  To list commands enter:"$'\n'$'\n'$"$SCRIPT_NAME help"
+	echo "List commands by running: $SCRIPT_NAME help"
 fi
 
 # Display footer
